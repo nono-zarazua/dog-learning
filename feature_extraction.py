@@ -139,7 +139,7 @@ def calculate_features(img_bgr, mask, filename, mask_source):
     return features
 
 # -----------------------------------------------------------------------------
-    Main Loop
+#    Main Loop
 # -----------------------------------------------------------------------------
 
 images = [f for f in os.listdir(SOURCE_DIR) if f.endswith(('.jpg', '.png', '.jpeg'))]
@@ -176,16 +176,16 @@ for i, img_name in enumerate(images):
     # --- 2. prepare visualisation ---
     mask_a_vis = (mask_a_bool * 255).astype('uint8')
     mask_a_vis = cv2.cvtColor(mask_a_vis, cv2.COLOR_GRAY2BGR)
-    cv2.putText(mask_a_vis, "LINKS: Custom", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+    cv2.putText(mask_a_vis, "Custom mask", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
     mask_a_vis = resize_to_height(mask_a_vis, DISPLAY_HEIGHT)
 
     mask_b_vis = (mask_b_bool * 255).astype('uint8')
     mask_b_vis = cv2.cvtColor(mask_b_vis, cv2.COLOR_GRAY2BGR)
-    cv2.putText(mask_b_vis, "RECHTS: Rembg", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+    cv2.putText(mask_b_vis, "Rembg", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
     mask_b_vis = resize_to_height(mask_b_vis, DISPLAY_HEIGHT)
 
     img_display = img.copy()
-    cv2.putText(img_display, "MITTE: Original", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+    cv2.putText(img_display, "Original", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     img_display = resize_to_height(img_display, DISPLAY_HEIGHT)
 
     # --- 3. Display image + masks ---
