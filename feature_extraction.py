@@ -11,22 +11,17 @@ from rembg import remove
 from pyefd import elliptic_fourier_descriptors
 from skimage.feature import canny
 
-# Pfad zu deinen Bildern
-SOURCE_DIR = '/home/jona/Schreibtisch/Studium/Semester3/Bioimaging/Practical_week/Data/test_images_feature_extraction_script'
 
-# DataFrame initialisieren
-df = pd.DataFrame()
+SOURCE_DIR = '/home/jona/Schreibtisch/Studium/Semester3/Bioimaging/Practical_week/dog-learning/data/dog_chicken/test/Not_used/dog'
+OUTPUT_CSV = '/home/jona/Schreibtisch/Studium/Semester3/Bioimaging/Practical_week/dog-learning/data/dog_chicken/test/Not_used/dog_features.csv'
+DISPLAY_HEIGHT = 500
 
-# csv zum Speichern der Ergebnisse
-output_csv = '/home/jona/Schreibtisch/Studium/Semester3/Bioimaging/Practical_week/Data/final_features.csv'
-
-# -----------------------------------------------------------------------------
-# 1. Hilfsfunktionen (Segmentierung & Features)
-# -----------------------------------------------------------------------------
+def resize_to_height(image, target_height):
+    h, w = image.shape[:2]
+    scale = target_height / h
+    return cv2.resize(image, (int(w * scale), target_height))
 
 def get_binary_mask_chicken(img_bgr):
-    """Deine Custom-Segmentierung (angepasst für OpenCV BGR Input)"""
-    # OpenCV lädt BGR, skimage will oft RGB/HSV. Konvertierung ist sicherer.
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     hsv = color.rgb2hsv(img_rgb)
     saturation = hsv[:, :, 1]
@@ -39,7 +34,6 @@ def get_binary_mask_chicken(img_bgr):
     except:
         return np.ones(saturation.shape, dtype=bool)
 
-    # Ecken-Check
     corners = [binary[0,0], binary[0,-1], binary[-1,0], binary[-1,-1]]
     if sum(corners) > 2:
         binary = ~binary
@@ -55,42 +49,30 @@ def get_binary_mask_chicken(img_bgr):
     largest_region = max(regions, key=lambda x: x.area)
     mask = np.zeros_like(binary)
     mask[label_img == largest_region.label] = 1
-    
     return mask
 
 def calculate_features(img_bgr, mask, filename, mask_source):
     features = {'filename': filename, 'mask_source': mask_source}
-    
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     
-    # -----------------------------------------------------------
-    # 1. Bounding Box Cutout (WICHTIG für saubere GLCM/Textur)
-    # -----------------------------------------------------------
-    # Wir schneiden das Rechteck aus, das das Objekt enthält.
-    # So rechnen wir nicht auf riesigen schwarzen Flächen.
+    # 1. ROI Cutout
     rows = np.any(mask, axis=1)
     cols = np.any(mask, axis=0)
-    
-    if rows.any() and cols.any(): # Sicherheitscheck falls Maske leer
+    if rows.any() and cols.any():
         rmin, rmax = np.where(rows)[0][[0, -1]]
         cmin, cmax = np.where(cols)[0][[0, -1]]
-        
         rmin = max(0, rmin-10); rmax = min(img_gray.shape[0], rmax+10)
         cmin = max(0, cmin-10); cmax = min(img_gray.shape[1], cmax+10)
-
         roi_gray = img_gray[rmin:rmax, cmin:cmax]
         roi_mask = mask[rmin:rmax, cmin:cmax]
         roi_rgb = img_rgb[rmin:rmax, cmin:cmax]
     else:
-        # Fallback: Nimm ganzes Bild
         roi_gray = img_gray
         roi_mask = mask
         roi_rgb = img_rgb
 
-    # -----------------------------------------------------------
-    # A. Farbe (Nur innerhalb der Maske)
-    # -----------------------------------------------------------
+    # A. color
     if np.sum(roi_mask) > 0:
         features['mean_r'] = roi_rgb[:,:,0][roi_mask].mean()
         features['mean_g'] = roi_rgb[:,:,1][roi_mask].mean()
@@ -100,48 +82,35 @@ def calculate_features(img_bgr, mask, filename, mask_source):
         features['mean_g'] = roi_rgb[:,:,1].mean()
         features['mean_b'] = roi_rgb[:,:,2].mean()
 
-    # -----------------------------------------------------------
-    # B. Textur (GLCM) - Auf der Bounding Box (ROI)
-    # -----------------------------------------------------------
+    # B. textur (GLCM)
     glcm = feature.graycomatrix(roi_gray, distances=[1], angles=[0], levels=256, symmetric=True, normed=True)
     features['glcm_contrast'] = feature.graycoprops(glcm, 'contrast')[0, 0]
     features['glcm_homogeneity'] = feature.graycoprops(glcm, 'homogeneity')[0, 0]
     features['glcm_energy'] = feature.graycoprops(glcm, 'energy')[0, 0]
     features['glcm_correlation'] = feature.graycoprops(glcm, 'correlation')[0, 0]
 
-    # -----------------------------------------------------------
-    # C. Entropy (Maskiert)
-    # -----------------------------------------------------------
+    # C. entropy
     entr_img = entropy(roi_gray, disk(5)) 
     if np.sum(roi_mask) > 0:
         features['mean_entropy'] = entr_img[roi_mask].mean()
     else:
         features['mean_entropy'] = entr_img.mean()
 
-    # -----------------------------------------------------------
-    # D. "Knusprigkeit" (Ersatz für Euler Number)
-    # -----------------------------------------------------------
-    # Canny Edge Detector innerhalb der Maske.
+    # D. edge Density
     edges = canny(roi_gray, sigma=2.0)
     edges_on_object = edges & roi_mask 
-    
-    # Feature: Edge Density (Kantenpixel pro Objektpixel)
     obj_pixels = np.sum(roi_mask)
     if obj_pixels > 0:
         features['internal_edge_density'] = np.sum(edges_on_object) / obj_pixels
     else:
         features['internal_edge_density'] = 0
 
-
-    # -----------------------------------------------------------
-    # E. Regionprops (Form)
-    # -----------------------------------------------------------
+    # E. regionprops
     label_img = measure.label(mask) 
     if label_img.max() > 0:
         regions = measure.regionprops(label_img)
         props = max(regions, key=lambda x: x.area)
         features['eccentricity'] = props.eccentricity
-
         features['solidity'] = props.solidity
         
         # F. EFD
@@ -157,7 +126,6 @@ def calculate_features(img_bgr, mask, filename, mask_source):
             except:
                  pass
             
-    # Flag für Maske/Keine Maske
     if mask_source == "full_rect":
         features['is_fallback'] = 1
     else:
@@ -171,16 +139,21 @@ def calculate_features(img_bgr, mask, filename, mask_source):
     return features
 
 # -----------------------------------------------------------------------------
-# 2. Main Loop
+    Main Loop
 # -----------------------------------------------------------------------------
+
 images = [f for f in os.listdir(SOURCE_DIR) if f.endswith(('.jpg', '.png', '.jpeg'))]
+df = pd.DataFrame()
 
 print("--- STEUERUNG ---")
-print("Pfeil LINKS (oder 'a')  = Maske A (Custom/Otsu)")
-print("Pfeil RECHTS (oder 'd') = Maske B (Rembg)")
-print("Pfeil RUNTER (oder 's') = Keine Maske (Ganzes Bild)")
-print("ESC                     = Beenden und Speichern")
+print("Arrow to the left = mask A (Custom/Otsu)")
+print("Arrow to the right = mask B (Rembg)")
+print("Arrow down = no mask (whole image)")
+print("ESC                     = Save and end")
 print("-----------------")
+
+cv2.namedWindow('Selector', cv2.WINDOW_NORMAL)
+cv2.resizeWindow('Selector', 1200, 600)
 
 for i, img_name in enumerate(images):
     img_path = os.path.join(SOURCE_DIR, img_name)
@@ -190,81 +163,67 @@ for i, img_name in enumerate(images):
 
     print(f"[{i+1}/{len(images)}] Verarbeite: {img_name}")
 
-    # 1. Maske A berechnen (Custom)
+    # --- 1. Calculating masks ---
     mask_a_bool = get_binary_mask_chicken(img)
-    mask_a_vis = (mask_a_bool * 255).astype('uint8')
-    mask_a_vis = cv2.cvtColor(mask_a_vis, cv2.COLOR_GRAY2BGR) # BGR machen für Concatenation
     
-    # Text Overlay A
-    cv2.putText(mask_a_vis, "LINKS: Custom", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-    # 2. Maske B berechnen (Rembg)
     try:
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         output_rembg = remove(img_rgb)
-        # Rembg gibt RGBA zurück, Alpha ist Index 3
         mask_b_bool = output_rembg[:, :, 3] > 0
     except Exception as e:
-        print(f"Rembg Fehler: {e}")
         mask_b_bool = np.zeros(img.shape[:2], dtype=bool)
+
+    # --- 2. prepare visualisation ---
+    mask_a_vis = (mask_a_bool * 255).astype('uint8')
+    mask_a_vis = cv2.cvtColor(mask_a_vis, cv2.COLOR_GRAY2BGR)
+    cv2.putText(mask_a_vis, "LINKS: Custom", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+    mask_a_vis = resize_to_height(mask_a_vis, DISPLAY_HEIGHT)
 
     mask_b_vis = (mask_b_bool * 255).astype('uint8')
     mask_b_vis = cv2.cvtColor(mask_b_vis, cv2.COLOR_GRAY2BGR)
-    
-    # Text Overlay B
-    cv2.putText(mask_b_vis, "RECHTS: Rembg", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-    
-    # Text Overlay Original
+    cv2.putText(mask_b_vis, "RECHTS: Rembg", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+    mask_b_vis = resize_to_height(mask_b_vis, DISPLAY_HEIGHT)
+
     img_display = img.copy()
-    cv2.putText(img_display, "MITTE: Original", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+    cv2.putText(img_display, "MITTE: Original", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+    img_display = resize_to_height(img_display, DISPLAY_HEIGHT)
 
-    # 3. Bilder nebeneinander packen (Links | Mitte | Rechts)
+    # --- 3. Display image + masks ---
     combined = np.hstack((mask_a_vis, img_display, mask_b_vis))
-
-    cv2.imshow('Feature Extractor Selector', combined)
+    cv2.imshow('Selector', combined)
     
-    # Warten auf Taste
+    # --- 4. Input Handling ---
     key = cv2.waitKey(0)
     
     selected_mask = None
     mask_source = ""
-
-    # Key Codes: 81=Links, 83=Rechts, 84=Runter (Linux/GTK oft). 
-    # Windows oft anders (2424832, etc). 
-    # Daher auch 'a', 'd', 's' als Backup!
     
-    if key in [81, 2, ord('a')]: # LINKS
-        print(f"-> Nehme Custom Maske")
+    if key in [81, 2, ord('a')]: # Left
+        print(f"-> Custom")
         selected_mask = mask_a_bool
         mask_source = "custom_otsu"
-        
-    elif key in [83, 3, ord('d')]: # RECHTS
-        print(f"-> Nehme Rembg Maske")
+    elif key in [83, 3, ord('d')]: # Right
+        print(f"-> Rembg")
         selected_mask = mask_b_bool
         mask_source = "rembg_ai"
-        
-    elif key in [84, 0, ord('s')]: # RUNTER
-        print(f"-> Nehme ganzes Bild (Rechteck)")
+    elif key in [84, 0, ord('s')]: # Down
+        print(f"-> Full Rect")
         selected_mask = np.ones(img.shape[:2], dtype=bool)
         mask_source = "full_rect"
-        
     elif key == 27: # ESC
-        print("Abbruch durch User.")
+        print("Abbruch.")
         break
-    
     else:
-        print("Taste nicht erkannt, überspringe Bild (Features werden nicht gespeichert).")
+        print("Taste ignoriert -> Bild übersprungen.")
         continue
 
-    # 4. Features berechnen und speichern
-    if selected_mask is not None:
-        feats = calculate_features(img, selected_mask, img_name, mask_source)
-        new_row = pd.DataFrame([feats])
-        df = pd.concat([df, new_row], ignore_index=True)
+    # Calculating features
+    feats = calculate_features(img, selected_mask, img_name, mask_source)
+    new_row = pd.DataFrame([feats])
+    df = pd.concat([df, new_row], ignore_index=True)
 
 cv2.destroyAllWindows()
 
-# 5. Speichern
-df.to_csv(output_csv, index=False)
-print(f"Fertig! Features gespeichert in {output_csv}")
+df.to_csv(OUTPUT_CSV, index=False)
+print(f"Gespeichert: {OUTPUT_CSV}")
 print(df.head())
