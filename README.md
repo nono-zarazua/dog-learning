@@ -200,6 +200,7 @@ The model performs well as a simple baseline, though some confusion remains betw
 git clone https://github.com/nono-zarazua/dog-learning.git
 cd dog-learning
 git checkout logistic
+```
 
 ## 2) Create an environment
 conda create -n bioimage_ml python=3.11 -y
