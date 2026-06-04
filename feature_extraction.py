@@ -12,8 +12,6 @@ from pyefd import elliptic_fourier_descriptors
 from skimage.feature import canny
 
 
-SOURCE_DIR = '/home/jona/Schreibtisch/Studium/Semester3/Bioimaging/Practical_week/dog-learning/data/dog_chicken/test/Not_used/dog'
-OUTPUT_CSV = '/home/jona/Schreibtisch/Studium/Semester3/Bioimaging/Practical_week/dog-learning/data/dog_chicken/test/Not_used/dog_features.csv'
 DISPLAY_HEIGHT = 500
 
 def resize_to_height(image, target_height):
@@ -141,89 +139,89 @@ def calculate_features(img_bgr, mask, filename, mask_source):
 # -----------------------------------------------------------------------------
 #    Main Loop
 # -----------------------------------------------------------------------------
+def run_extraction(source_dir, output_csv):
+    images = [f for f in os.listdir(source_dir) if f.endswith(('.jpg', '.png', '.jpeg'))]
+    df = pd.DataFrame()
 
-images = [f for f in os.listdir(SOURCE_DIR) if f.endswith(('.jpg', '.png', '.jpeg'))]
-df = pd.DataFrame()
+    print("--- STEUERUNG ---")
+    print("Arrow to the left = mask A (Custom/Otsu)")
+    print("Arrow to the right = mask B (Rembg)")
+    print("Arrow down = no mask (whole image)")
+    print("ESC                     = Save and end")
+    print("-----------------")
 
-print("--- STEUERUNG ---")
-print("Arrow to the left = mask A (Custom/Otsu)")
-print("Arrow to the right = mask B (Rembg)")
-print("Arrow down = no mask (whole image)")
-print("ESC                     = Save and end")
-print("-----------------")
+    cv2.namedWindow('Selector', cv2.WINDOW_NORMAL)
+    cv2.resizeWindow('Selector', 1200, 600)
 
-cv2.namedWindow('Selector', cv2.WINDOW_NORMAL)
-cv2.resizeWindow('Selector', 1200, 600)
+    for i, img_name in enumerate(images):
+        img_path = os.path.join(source_dir, img_name)
+        img = cv2.imread(img_path)
+        
+        if img is None: continue
 
-for i, img_name in enumerate(images):
-    img_path = os.path.join(SOURCE_DIR, img_name)
-    img = cv2.imread(img_path)
-    
-    if img is None: continue
+        print(f"[{i+1}/{len(images)}] Verarbeite: {img_name}")
 
-    print(f"[{i+1}/{len(images)}] Verarbeite: {img_name}")
+        # --- 1. Calculating masks ---
+        mask_a_bool = get_binary_mask_chicken(img)
+        
+        try:
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            output_rembg = remove(img_rgb)
+            mask_b_bool = output_rembg[:, :, 3] > 0
+        except Exception as e:
+            mask_b_bool = np.zeros(img.shape[:2], dtype=bool)
 
-    # --- 1. Calculating masks ---
-    mask_a_bool = get_binary_mask_chicken(img)
-    
-    try:
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        output_rembg = remove(img_rgb)
-        mask_b_bool = output_rembg[:, :, 3] > 0
-    except Exception as e:
-        mask_b_bool = np.zeros(img.shape[:2], dtype=bool)
+        # --- 2. prepare visualisation ---
+        mask_a_vis = (mask_a_bool * 255).astype('uint8')
+        mask_a_vis = cv2.cvtColor(mask_a_vis, cv2.COLOR_GRAY2BGR)
+        cv2.putText(mask_a_vis, "Custom mask", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        mask_a_vis = resize_to_height(mask_a_vis, DISPLAY_HEIGHT)
 
-    # --- 2. prepare visualisation ---
-    mask_a_vis = (mask_a_bool * 255).astype('uint8')
-    mask_a_vis = cv2.cvtColor(mask_a_vis, cv2.COLOR_GRAY2BGR)
-    cv2.putText(mask_a_vis, "Custom mask", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-    mask_a_vis = resize_to_height(mask_a_vis, DISPLAY_HEIGHT)
+        mask_b_vis = (mask_b_bool * 255).astype('uint8')
+        mask_b_vis = cv2.cvtColor(mask_b_vis, cv2.COLOR_GRAY2BGR)
+        cv2.putText(mask_b_vis, "Rembg", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        mask_b_vis = resize_to_height(mask_b_vis, DISPLAY_HEIGHT)
 
-    mask_b_vis = (mask_b_bool * 255).astype('uint8')
-    mask_b_vis = cv2.cvtColor(mask_b_vis, cv2.COLOR_GRAY2BGR)
-    cv2.putText(mask_b_vis, "Rembg", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-    mask_b_vis = resize_to_height(mask_b_vis, DISPLAY_HEIGHT)
+        img_display = img.copy()
+        cv2.putText(img_display, "Original", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        img_display = resize_to_height(img_display, DISPLAY_HEIGHT)
 
-    img_display = img.copy()
-    cv2.putText(img_display, "Original", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-    img_display = resize_to_height(img_display, DISPLAY_HEIGHT)
+        # --- 3. Display image + masks ---
+        combined = np.hstack((mask_a_vis, img_display, mask_b_vis))
+        cv2.imshow('Selector', combined)
+        
+        # --- 4. Input Handling ---
+        key = cv2.waitKey(0)
+        
+        selected_mask = None
+        mask_source = ""
+        
+        if key in [81, 2, ord('a')]: # Left
+            print(f"-> Custom")
+            selected_mask = mask_a_bool
+            mask_source = "custom_otsu"
+        elif key in [83, 3, ord('d')]: # Right
+            print(f"-> Rembg")
+            selected_mask = mask_b_bool
+            mask_source = "rembg_ai"
+        elif key in [84, 0, ord('s')]: # Down
+            print(f"-> Full Rect")
+            selected_mask = np.ones(img.shape[:2], dtype=bool)
+            mask_source = "full_rect"
+        elif key == 27: # ESC
+            print("Abbruch.")
+            break
+        else:
+            print("Taste ignoriert -> Bild übersprungen.")
+            continue
 
-    # --- 3. Display image + masks ---
-    combined = np.hstack((mask_a_vis, img_display, mask_b_vis))
-    cv2.imshow('Selector', combined)
-    
-    # --- 4. Input Handling ---
-    key = cv2.waitKey(0)
-    
-    selected_mask = None
-    mask_source = ""
-    
-    if key in [81, 2, ord('a')]: # Left
-        print(f"-> Custom")
-        selected_mask = mask_a_bool
-        mask_source = "custom_otsu"
-    elif key in [83, 3, ord('d')]: # Right
-        print(f"-> Rembg")
-        selected_mask = mask_b_bool
-        mask_source = "rembg_ai"
-    elif key in [84, 0, ord('s')]: # Down
-        print(f"-> Full Rect")
-        selected_mask = np.ones(img.shape[:2], dtype=bool)
-        mask_source = "full_rect"
-    elif key == 27: # ESC
-        print("Abbruch.")
-        break
-    else:
-        print("Taste ignoriert -> Bild übersprungen.")
-        continue
+        # Calculating features
+        feats = calculate_features(img, selected_mask, img_name, mask_source)
+        new_row = pd.DataFrame([feats])
+        df = pd.concat([df, new_row], ignore_index=True)
 
-    # Calculating features
-    feats = calculate_features(img, selected_mask, img_name, mask_source)
-    new_row = pd.DataFrame([feats])
-    df = pd.concat([df, new_row], ignore_index=True)
+    cv2.destroyAllWindows()
 
-cv2.destroyAllWindows()
-
-df.to_csv(OUTPUT_CSV, index=False)
-print(f"Gespeichert: {OUTPUT_CSV}")
-print(df.head())
+    df.to_csv(output_csv, index=False)
+    print(f"Gespeichert: {output_csv}")
+    print(df.head())
