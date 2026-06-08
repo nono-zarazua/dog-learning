@@ -2,7 +2,9 @@
 Two different machine-leaning models trained with features extracted from different data sets involving dogs and similar-looking foods.
 
 paths to notebooks:
+
 trees/random-forests.ipynb
+
 SVM/SVM.ipynb
 
 Different Team Member Contributions:
