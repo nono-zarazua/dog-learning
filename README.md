@@ -10,7 +10,5 @@ Different Team Member Contributions:
 - manuel mask comparison puppy-bagel dataset (Nono)
 - Training SVM model (Jona)
 - Training Random Forest (Nono)
-- Training Logistic Regression (Alba)
 - Overview Presentation (Jona + Nono)
-- Model Comparison (???)
 - ...
