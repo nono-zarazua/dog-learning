@@ -7,10 +7,10 @@ Different Team Member Contributions:
 - Feature extraction script (Nono + Jona)
 - manuel mask comparison labradoodle-fried chicken dataset (Jona)
 - manuel mask comparison chihuahua- muffin dataset (???)
-- manuel mask comparison puppy-bagel dataset (???)
+- manuel mask comparison puppy-bagel dataset (Nono)
 - Training SVM model (Jona)
 - Training Random Forest (Nono)
 - Training Logistic Regression (Alba)
-- Overview Presentation (Jona + ???)
+- Overview Presentation (Jona + Nono)
 - Model Comparison (???)
 - ...
